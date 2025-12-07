@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import readline from 'node:readline/promises';
 import fs from 'node:fs/promises';
 
-import type { Content } from "@google/genai";
+import type { Content, Chat } from "@google/genai";
 
 // ----------------------------------------------------
 // 1. 配置加载与初始化
@@ -56,6 +56,56 @@ function createChat(history?: Content[]) {
   });
 }
 
+/**
+ * 喵呜~ 这是一个小帮手，用来打印加载历史中的最后一条或最后一次对话喵！
+ * @param history - 对话历史记录喵
+ */
+function printLastConversation(history: Content[]): void {
+  const lastTwo = history.slice(-2);
+  if (
+    lastTwo.length >= 2 &&
+    lastTwo[0].role === 'user' &&
+    lastTwo[0].parts &&
+    lastTwo[1].role === 'model' &&
+    lastTwo[1].parts
+  ) {
+    console.log(`\n--- 最后一次对话 ---`);
+    console.log(`user:\n> ${lastTwo[0].parts.map(p => 'text' in p ? p.text : '').join('')}`);
+    console.log(`\nmodel:\n${lastTwo[1].parts.map(p => 'text' in p ? p.text : '').join('')}`);
+    console.log(`--------------------`);
+  } else if (history.length > 0) {
+    const lastEntry = history[history.length - 1];
+    console.log(`\n--- 最后一条记录 ---`);
+    console.log(
+      lastEntry.role && lastEntry.parts ?
+        `${lastEntry.role}:\n${lastEntry.parts.map(p => 'text' in p ? p.text : '').join('')}`
+      :
+        lastEntry
+    );
+    console.log(`--------------------`);
+  }
+}
+
+/**
+ * 喵呜~ 这是一个可爱的函数，用来加载保存的聊天历史喵！
+ * @param filename - 要加载的文件名喵
+ * @param currentChat - 当前的聊天会话喵
+ * @returns 新的聊天会话或者原来的会话（如果加载失败）喵
+ */
+async function loadChatHistory(filename: string, currentChat: Chat): Promise<Chat> {
+  try {
+    const fileContent = await fs.readFile(filename, 'utf8');
+    const history: Content[] = JSON.parse(fileContent);
+    const newChat = createChat(history);
+    console.log(`\n📂 对话历史已从 ${filename} 加载喵~`);
+    printLastConversation(history); // 调用小帮手打印最后对话喵
+    return newChat;
+  } catch (error) {
+    console.error(`\n❌ 加载文件时出错了喵:`, error);
+    return currentChat; // 加载失败，返回原来的聊天会话喵
+  }
+}
+
 // ----------------------------------------------------
 // 2. 对话核心逻辑
 // ----------------------------------------------------
@@ -85,6 +135,8 @@ async function main(): Promise<void> {
   console.log('输入 `/exit` 或 `/quit` 退出喵!');
   console.log('输入 `/model <model_name>` 切换模型喵!');
   console.log('输入 `/clear` 清除历史记录喵!');
+  console.log('输入 `/save <filename>` 保存对话喵!');
+  console.log('输入 `/load <filename>` 加载对话喵!');
   console.log(`-----------------------------------`);
 
   // 3. 循环等待用户输入
@@ -127,6 +179,35 @@ async function main(): Promise<void> {
       chat = createChat();
       console.log(`🧹 历史记录已清除喵~`);
       continue; // 继续下一次循环
+    }
+
+    // 喵~ 处理 /save 命令
+    else if (userPrompt.toLowerCase().startsWith('/save')) {
+      const filename = userPrompt.split(/\s+/)[1]?.trim();
+      if (filename) {
+        try {
+          const history = chat.getHistory(true);
+          await fs.writeFile(filename, JSON.stringify(history, null, 2));
+          console.log(`\n💾 对话历史已保存到 ${filename} 喵~`);
+        } catch (error) {
+          console.error(`\n❌ 保存文件时出错了喵:`, error);
+        }
+        continue;
+      } else {
+        console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /save my_chat.json`);
+        continue;
+      }
+    }
+
+    // 喵~ 处理 /load 命令
+    else if (userPrompt.toLowerCase().startsWith('/load')) {
+      const filename = userPrompt.split(/\s+/)[1]?.trim();
+      if (filename) {
+        chat = await loadChatHistory(filename, chat); // 调用新函数喵
+      } else {
+        console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /load my_chat.json`);
+      }
+      continue;
     }
 
     else try {
