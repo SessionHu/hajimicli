@@ -63,7 +63,8 @@ function createChat(history?: Content[]) {
 function printLastConversation(history: Content[]): void {
   const lastTwo = history.slice(-2);
   if (
-    lastTwo.length >= 2 &&
+    lastTwo[0] &&
+    lastTwo[1] &&
     lastTwo[0].role === 'user' &&
     lastTwo[0].parts &&
     lastTwo[1].role === 'model' &&
@@ -77,7 +78,7 @@ function printLastConversation(history: Content[]): void {
     const lastEntry = history[history.length - 1];
     console.log(`\n--- 最后一条记录 ---`);
     console.log(
-      lastEntry.role && lastEntry.parts ?
+      lastEntry?.role && lastEntry.parts ?
         `${lastEntry.role}:\n${lastEntry.parts.map(p => 'text' in p ? p.text : '').join('')}`
       :
         lastEntry
@@ -106,13 +107,37 @@ async function loadChatHistory(filename: string, currentChat: Chat): Promise<Cha
   }
 }
 
+/**
+ * 压缩聊天记录
+ * @param contents - 待压缩的原始记录
+ * @returns 压缩后的记录
+ */
+function minifyChatHistory(contents: Content[]): Content[] {
+  const res = new Array<Content>;
+  for (const e of contents) {
+    const lst = res.pop();
+    if (
+      lst &&
+      lst.role === e.role &&
+      lst.parts?.length === 1 && lst.parts.length === e.parts?.length &&
+      lst.parts[0] && e.parts[0] &&
+      Object.keys(lst.parts[0])[0] === Object.keys(e.parts[0])[0] &&
+      lst.parts[0].text && e.parts[0].text
+    ) {
+      lst.parts[0].text += e.parts[0].text;
+      res.push(lst);
+    } else
+      lst ? res.push(lst, e) : res.push(e);
+  }
+  return res;
+}
+
 // ----------------------------------------------------
 // 2. 对话核心逻辑
 // ----------------------------------------------------
 
 /**
  * 喵呜~ 这是 CLI 的主函数，负责启动对话循环喵！
- * @returns {Promise<void>}
  */
 async function main(): Promise<void> {
   const rl = readline.createInterface({
@@ -144,7 +169,7 @@ async function main(): Promise<void> {
     let userPrompt: string;
     try {
       userPrompt = await getMultilineInput(rl, '\nuser:\n> ');
-    } catch (e) {
+    } catch (e: any) {
       // 喵~ 检测到用户按下了 Ctrl+D (AbortError), ls 会和 'quit' 一样乖乖退出的喵
       if ('code' in e && e.code === 'ABORT_ERR') {
         rl.close();
@@ -186,7 +211,7 @@ async function main(): Promise<void> {
       const filename = userPrompt.split(/\s+/)[1]?.trim();
       if (filename) {
         try {
-          const history = chat.getHistory(true);
+          const history = minifyChatHistory(chat.getHistory(true));
           await fs.writeFile(filename, JSON.stringify(history, null, 2));
           console.log(`\n💾 对话历史已保存到 ${filename} 喵~`);
         } catch (error) {
