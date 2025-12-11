@@ -199,6 +199,15 @@ async function main(): Promise<void> {
       }
     }
 
+    // list avaliable models
+    else if (userPrompt.toLowerCase() === '/list') {
+      console.log();
+      for await (const e of await ai.models.list()) {
+        console.log(e.name, ':', e.displayName, ':', e.description);
+      }
+      continue;
+    }
+
     // clear history
     else if (userPrompt.toLowerCase() === '/clear') {
       chat = createChat();
