@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 
 import readline from 'node:readline/promises';
 import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from "node:path";
+import child_process from 'node:child_process';
 
 import type { Content, Chat } from "@google/genai";
 
@@ -132,6 +135,17 @@ function minifyChatHistory(contents: Content[]): Content[] {
   return res;
 }
 
+async function editWithExternalEditor(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), '/tmp.'));
+  const file = path.join(dir, 'prompt.md');
+  child_process.spawnSync(process.env.EDITOR || 'editor', [ file ], {
+    stdio: 'inherit'
+  });
+  const content = await fs.readFile(file, 'utf8').catch(console.warn);
+  fs.rm(dir, { recursive: true }).catch(console.warn);
+  return content?.trimEnd() || '';
+}
+
 // ----------------------------------------------------
 // 2. 对话核心逻辑
 // ----------------------------------------------------
@@ -153,15 +167,17 @@ async function main(): Promise<void> {
 
   // 2. 打印欢迎信息
   console.log(`\n✨ Hajimi ni Chat CLI`);
-  console.log(`模型：${modelname}`);
+  console.log(`模型: ${modelname}`);
   if (SYSTEM_PROMPT) {
     console.log(`系统提示词已设置 (✓)`);
   }
-  console.log('输入 `/exit` 或 `/quit` 退出喵!');
-  console.log('输入 `/model <model_name>` 切换模型喵!');
-  console.log('输入 `/clear` 清除历史记录喵!');
-  console.log('输入 `/save <filename>` 保存对话喵!');
-  console.log('输入 `/load <filename>` 加载对话喵!');
+  console.log('`/exit` 或 `/quit` 退出');
+  console.log('`/list` 列出所有可用模型');
+  console.log('`/model <model_name>` 切换模型');
+  console.log('`/clear` 清除历史记录');
+  console.log('`/editor` 使用外部编辑器编辑');
+  console.log('`/save <filename>` 保存对话');
+  console.log('`/load <filename>` 加载对话');
   console.log(`-----------------------------------`);
 
   // 3. 循环等待用户输入
@@ -226,11 +242,10 @@ async function main(): Promise<void> {
         } catch (error) {
           console.error(`\n❌ 保存文件时出错了喵:`, error);
         }
-        continue;
       } else {
         console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /save my_chat.json`);
-        continue;
       }
+      continue;
     }
 
     // 喵~ 处理 /load 命令
@@ -244,7 +259,12 @@ async function main(): Promise<void> {
       continue;
     }
 
-    else try {
+    // edit with external editor
+    else if (userPrompt.toLowerCase() === '/editor') {
+      console.log(userPrompt = await editWithExternalEditor());
+    }
+
+    try {
       // 4. 发送消息并获取回复
       // 使用 chat.sendMessage()，它会自动把之前的聊天记录也传过去，
       // 这样模型就能记住上下文，进行连续对话啦喵！
