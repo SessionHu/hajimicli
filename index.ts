@@ -135,9 +135,10 @@ function minifyChatHistory(contents: Content[]): Content[] {
   return res;
 }
 
-async function editWithExternalEditor(): Promise<string> {
+async function editWithExternalEditor(initcontent?: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), '/tmp.'));
   const file = path.join(dir, 'prompt.md');
+  initcontent && await fs.writeFile(file, initcontent, 'utf8');
   child_process.spawnSync(process.env.EDITOR || 'editor', [ file ], {
     stdio: 'inherit'
   });
@@ -175,6 +176,7 @@ async function main(): Promise<void> {
   console.log('`/list` 列出所有可用模型');
   console.log('`/model <model_name>` 切换模型');
   console.log('`/clear` 清除历史记录');
+  console.log('`/history` 编辑历史记录');
   console.log('`/editor` 使用外部编辑器编辑');
   console.log('`/save <filename>` 保存对话');
   console.log('`/load <filename>` 加载对话');
@@ -252,10 +254,16 @@ async function main(): Promise<void> {
     else if (userPrompt.toLowerCase().startsWith('/load')) {
       const filename = userPrompt.split(/\s+/)[1]?.trim();
       if (filename) {
-        chat = await loadChatHistory(filename, chat); // 调用新函数喵
+        chat = await loadChatHistory(filename, chat);
       } else {
         console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /load my_chat.json`);
       }
+      continue;
+    }
+
+    // edit history
+    else if (userPrompt.toLowerCase() === '/history') {
+      chat = createChat(JSON.parse(await editWithExternalEditor(JSON.stringify(minifyChatHistory(chat.getHistory(true)), null, 2))))
       continue;
     }
 
