@@ -172,6 +172,82 @@ async function main(): Promise<void> {
   // 这样模型就会一直保持这个设定啦，超棒的喵！
   let chat = createChat();
 
+  // 定义命令
+  const commands: {
+    [key: string]: {
+      description: string,
+      handler: (args: string) => Promise<void>
+    }
+  } = {
+    '/list': {
+      description: '列出所有可用模型',
+      async handler() {
+        console.log();
+        for await (const e of await ai.models.list()) {
+          console.log(e.name, ':', e.displayName, ':', e.description);
+        }
+      },
+    },
+    '/model': {
+      description: '<model_name> 切换模型',
+      async handler(args) {
+        if (args) {
+          modelname = args;
+          chat = createChat(chat.getHistory(true));
+          console.log(`\n✨ 模型已切换为: ${modelname} 喵~`);
+        } else {
+          console.log(`\n🤔 喵, 请指定一个模型名称喵, 像这样: /model gemini-2.5-flash`);
+        }
+      },
+    },
+    '/clear': {
+      description: '清除历史记录',
+      async handler() {
+        chat = createChat();
+        console.log(`🧹 历史记录已清除喵~`);
+      },
+    },
+    '/history': {
+      description: '编辑历史记录',
+      async handler() {
+        try {
+          const newHistory = await editWithExternalEditor(JSON.stringify(minifyChatHistory(chat.getHistory(true)), null, 2), 'history.json');
+          if (newHistory) {
+            chat = createChat(JSON.parse(newHistory));
+          }
+        } catch (e) {
+          console.error("\n❌ 解析历史记录时出现错误喵:", e);
+        }
+      },
+    },
+    '/save': {
+      description: '<filename> 保存对话',
+      async handler(args) {
+        if (args) {
+          try {
+            const history = minifyChatHistory(chat.getHistory(true));
+            await fs.writeFile(args, JSON.stringify(history, null, 2));
+            console.log(`\n💾 对话历史已保存到 ${args} 喵~`);
+          } catch (error) {
+            console.error(`\n❌ 保存文件时出错了喵:`, error);
+          }
+        } else {
+          console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /save my_chat.json`);
+        }
+      },
+    },
+    '/load': {
+      description: '<filename> 加载对话',
+      async handler(args) {
+        if (args) {
+          chat = await loadChatHistory(args, chat);
+        } else {
+          console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /load my_chat.json`);
+        }
+      },
+    },
+  };
+
   // 2. 打印欢迎信息
   console.log(`\n✨ Hajimi ni Chat CLI`);
   console.log(`模型: ${modelname}`);
@@ -179,13 +255,10 @@ async function main(): Promise<void> {
     console.log(`系统提示词已设置 (✓)`);
   }
   console.log('`/exit` 或 `/quit` 退出');
-  console.log('`/list` 列出所有可用模型');
-  console.log('`/model <model_name>` 切换模型');
-  console.log('`/clear` 清除历史记录');
-  console.log('`/history` 编辑历史记录');
   console.log('`/editor` 使用外部编辑器编辑');
-  console.log('`/save <filename>` 保存对话');
-  console.log('`/load <filename>` 加载对话');
+  for (const name in commands) {
+    console.log(`\`${name}\` ${commands[name]!.description}`);
+  }
   console.log(`-----------------------------------`);
 
   // 3. 循环等待用户输入
@@ -203,79 +276,29 @@ async function main(): Promise<void> {
       throw e;
     }
 
-    if (userPrompt.toLowerCase() === '/exit' || userPrompt.toLowerCase() === '/quit') {
-      rl.close();
-      break;
-    }
+    const trimmedPrompt = userPrompt.trim();
+    if (trimmedPrompt.startsWith('/')) {
+      const [command, ...argParts] = trimmedPrompt.split(/\s+/);
+      const args = argParts.join(' ').trim();
+      const commandName = command!.toLowerCase();
 
-    // 喵~ 处理 /model 命令
-    else if (userPrompt.toLowerCase().startsWith('/model')) {
-      const newModel = userPrompt.split(/\s+/)[1]?.trim();
-      if (newModel) {
-        modelname = newModel;
-        // 重新创建一个带有新模型的聊天会话喵
-        chat = createChat(chat.getHistory(true));
-        console.log(`\n✨ 模型已切换为: ${modelname} 喵~`);
-        continue; // 继续下一次循环，等待用户输入喵
+      if (commandName === '/exit' || commandName === '/quit') {
+        rl.close();
+        break;
+      }
+
+      if (commandName === '/editor') {
+        console.log(userPrompt = await editWithExternalEditor());
+        // Fall through to send message
       } else {
-        console.log(`\n🤔 喵, 请指定一个模型名称喵, 像这样: /model gemini-2.5-flash`);
-        continue; // 继续下一次循环
-      }
-    }
-
-    // list avaliable models
-    else if (userPrompt.toLowerCase() === '/list') {
-      console.log();
-      for await (const e of await ai.models.list()) {
-        console.log(e.name, ':', e.displayName, ':', e.description);
-      }
-      continue;
-    }
-
-    // clear history
-    else if (userPrompt.toLowerCase() === '/clear') {
-      chat = createChat();
-      console.log(`🧹 历史记录已清除喵~`);
-      continue; // 继续下一次循环
-    }
-
-    // 喵~ 处理 /save 命令
-    else if (userPrompt.toLowerCase().startsWith('/save')) {
-      const filename = userPrompt.split(/\s+/)[1]?.trim();
-      if (filename) {
-        try {
-          const history = minifyChatHistory(chat.getHistory(true));
-          await fs.writeFile(filename, JSON.stringify(history, null, 2));
-          console.log(`\n💾 对话历史已保存到 ${filename} 喵~`);
-        } catch (error) {
-          console.error(`\n❌ 保存文件时出错了喵:`, error);
+        const cmd = commands[commandName];
+        if (cmd) {
+          await cmd.handler(args);
+        } else {
+          console.log(`\n🤔 喵, 未知指令喵: ${commandName}`);
         }
-      } else {
-        console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /save my_chat.json`);
+        continue;
       }
-      continue;
-    }
-
-    // 喵~ 处理 /load 命令
-    else if (userPrompt.toLowerCase().startsWith('/load')) {
-      const filename = userPrompt.split(/\s+/)[1]?.trim();
-      if (filename) {
-        chat = await loadChatHistory(filename, chat);
-      } else {
-        console.log(`\n🤔 喵, 请指定一个文件名喵, 像这样: /load my_chat.json`);
-      }
-      continue;
-    }
-
-    // edit history
-    else if (userPrompt.toLowerCase() === '/history') {
-      chat = createChat(JSON.parse(await editWithExternalEditor(JSON.stringify(minifyChatHistory(chat.getHistory(true)), null, 2), 'history.json')))
-      continue;
-    }
-
-    // edit with external editor
-    else if (userPrompt.toLowerCase() === '/editor') {
-      console.log(userPrompt = await editWithExternalEditor());
     }
 
     try {
