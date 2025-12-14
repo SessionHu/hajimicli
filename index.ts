@@ -17,13 +17,16 @@ import type { Content, Chat } from "@google/genai";
 dotenv.config({quiet:true});
 
 // 初始化 Gemini 客户端
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  vertexai: Boolean(process.env.VERTEX)
+});
 
 /**
  * 喵呜~ 这是一个可爱的函数，用来获取支持反斜杠续行的多行输入喵！
- * @param {readline.Interface} rl - readline 接口实例喵
- * @param {string} initialPrompt - 第一次显示的提示信息喵
- * @returns {Promise<string>} 拼接好的用户输入喵
+ * @param rl - readline 接口实例喵
+ * @param initialPrompt - 第一次显示的提示信息喵
+ * @returns 拼接好的用户输入喵
  */
 async function getMultilineInput(rl: readline.Interface, initialPrompt: string): Promise<string> {
   let fullInput = '';
@@ -34,7 +37,7 @@ async function getMultilineInput(rl: readline.Interface, initialPrompt: string):
 
     if (line.endsWith('\\')) {
       fullInput += line.slice(0, -1) + '\n'; // 移除反斜杠并添加换行符
-      currentPrompt = '> '; // 续行提示符
+      currentPrompt = '| '; // 续行提示符
     } else {
       fullInput += line;
       break; // 没有反斜杠，表示输入结束
@@ -135,9 +138,12 @@ function minifyChatHistory(contents: Content[]): Content[] {
   return res;
 }
 
-async function editWithExternalEditor(initcontent?: string): Promise<string> {
+/**
+ * 使用外部编辑器编辑内容
+ */
+async function editWithExternalEditor(initcontent?: string, filename = 'prompt.md'): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), '/tmp.'));
-  const file = path.join(dir, 'prompt.md');
+  const file = path.join(dir, filename);
   initcontent && await fs.writeFile(file, initcontent, 'utf8');
   child_process.spawnSync(process.env.EDITOR || 'editor', [ file ], {
     stdio: 'inherit'
@@ -263,7 +269,7 @@ async function main(): Promise<void> {
 
     // edit history
     else if (userPrompt.toLowerCase() === '/history') {
-      chat = createChat(JSON.parse(await editWithExternalEditor(JSON.stringify(minifyChatHistory(chat.getHistory(true)), null, 2))))
+      chat = createChat(JSON.parse(await editWithExternalEditor(JSON.stringify(minifyChatHistory(chat.getHistory(true)), null, 2), 'history.json')))
       continue;
     }
 
